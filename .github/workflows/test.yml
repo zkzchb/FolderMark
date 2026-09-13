@@ -33,3 +33,10 @@ jobs:
 
       - name: Validate Cloudflare deployment
         run: npx wrangler deploy --dry-run
+
+      - name: Build for subpath deployment
+        env:
+          FOLDERMARK_BASE_PATH: /Citation/
+        run: |
+          npm run build
+          grep -q '/Citation/assets/' dist/index.html
