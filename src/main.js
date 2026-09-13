@@ -2,9 +2,48 @@ import "./styles.css";
 
 const app = document.querySelector("#app");
 const siteName = "FolderMark";
+const basePath = normalizeBasePath(import.meta.env.BASE_URL);
+
+function normalizeBasePath(value) {
+  let normalized = String(value ?? "/").trim() || "/";
+  if (!normalized.startsWith("/")) {
+    normalized = `/${normalized}`;
+  }
+  normalized = normalized.replace(/\/{2,}/g, "/");
+  if (!normalized.endsWith("/")) {
+    normalized += "/";
+  }
+  return normalized;
+}
+
+function withBasePath(value) {
+  if (typeof value !== "string" || value === "") {
+    return value;
+  }
+  if (/^(?:[a-z][a-z\d+.-]*:|\/\/|#)/i.test(value)) {
+    return value;
+  }
+  if (basePath === "/") {
+    return value.startsWith("/") ? value : `/${value}`;
+  }
+  if (value === basePath.slice(0, -1) || value.startsWith(basePath)) {
+    return value;
+  }
+  return `${basePath}${value.replace(/^\/+/, "")}`;
+}
 
 function decodedSegments() {
-  return window.location.pathname
+  const pathname = window.location.pathname;
+  const baseWithoutSlash = basePath === "/" ? "" : basePath.slice(0, -1);
+  let relativePath = pathname;
+
+  if (baseWithoutSlash && pathname === baseWithoutSlash) {
+    relativePath = "/";
+  } else if (baseWithoutSlash && pathname.startsWith(`${baseWithoutSlash}/`)) {
+    relativePath = pathname.slice(baseWithoutSlash.length);
+  }
+
+  return relativePath
     .split("/")
     .filter(Boolean)
     .map((segment) => {
@@ -18,7 +57,7 @@ function decodedSegments() {
 
 function contentUrl(kind, segments, filename) {
   const encoded = segments.map((segment) => encodeURIComponent(segment));
-  return `/_content/${kind}/${[...encoded, filename].join("/")}`;
+  return withBasePath(`/_content/${kind}/${[...encoded, filename].join("/")}`);
 }
 
 async function fetchJson(url) {
@@ -48,7 +87,16 @@ function resetPage(className = "") {
 function htmlToFragment(html) {
   const template = document.createElement("template");
   template.innerHTML = html;
-  return template.content;
+  const fragment = template.content;
+
+  for (const link of fragment.querySelectorAll('a[href^="/"]')) {
+    link.setAttribute("href", withBasePath(link.getAttribute("href")));
+  }
+  for (const image of fragment.querySelectorAll('img[src^="/"]')) {
+    image.setAttribute("src", withBasePath(image.getAttribute("src")));
+  }
+
+  return fragment;
 }
 
 function createPaper() {
@@ -189,7 +237,7 @@ function renderIndex(index) {
   for (const item of index.items) {
     const listItem = document.createElement("li");
     const link = document.createElement("a");
-    link.href = item.href;
+    link.href = withBasePath(item.href);
     link.textContent = item.title;
     listItem.append(link);
 
@@ -251,7 +299,7 @@ async function route() {
   );
 
   if (article?.type === "redirect") {
-    window.location.replace(article.to);
+    window.location.replace(withBasePath(article.to));
     return;
   }
   if (article?.type === "document") {
